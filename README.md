@@ -4,7 +4,7 @@
 
 **An ultra-lightweight, 100% open-source, zero-bloat Android client for Saint Petersburg schools (`dnevnik2.petersburgedu.ru`).**
 
-[![Latest Release](https://img.shields.io/github/v/release/YOUR_GITHUB_USERNAME/YOUR_REPO?style=for-the-badge&color=7C4DFF&label=Latest%20Release)](https://github.com/YOUR_GITHUB_USERNAME/YOUR_REPO/releases)
+[![Latest Release](https://img.shields.io/github/v/release/ibcsz12/SPBplus-dnevnik?style=for-the-badge&color=7C4DFF&label=Latest%20Release)](https://github.com/ibcsz12/SPBplus-dnevnik/releases)
 [![Telegram](https://img.shields.io/badge/Telegram-@nixwaretop-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/nixwaretop)
 [![Platform](https://img.shields.io/badge/Platform-Android_7.0+-3DDC84?style=for-the-badge&logo=android&logoColor=white)](#)
 [![Build](https://img.shields.io/badge/Build-Zero--Gradle_%7C_aapt2-FF6F00?style=for-the-badge)](#)
