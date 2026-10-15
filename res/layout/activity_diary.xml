@@ -1,0 +1,424 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rootLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#F4F5F7">
+
+    <!-- Верхняя шапка с ФИО, школой, кнопкой обновления и шестерёнкой Настроек -->
+    <LinearLayout
+        android:id="@+id/headerLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#FFFFFF"
+        android:gravity="center_vertical"
+        android:paddingLeft="14dp"
+        android:paddingRight="14dp"
+        android:paddingTop="12dp"
+        android:paddingBottom="10dp">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvUserName"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#111111"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:text="Загрузка профиля..." />
+
+            <TextView
+                android:id="@+id/tvUserSchool"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textColor="#888888"
+                android:textSize="12sp"
+                android:text="Петербургское образование" />
+        </LinearLayout>
+
+        <!-- Кнопка обновления (без системных отступов, с центрированием) -->
+        <Button
+            android:id="@+id/btnRefresh"
+            android:layout_width="40dp"
+            android:layout_height="38dp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:padding="0dp"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="↻"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <!-- Кнопка Настроек (Шестерёнка справа) -->
+        <Button
+            android:id="@+id/btnHeaderSettings"
+            android:layout_width="40dp"
+            android:layout_height="38dp"
+            android:layout_marginLeft="6dp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:padding="0dp"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="⚙"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- Блок Сводки: 4 большие плитки-кнопки (только на экране Сводки) -->
+    <LinearLayout
+        android:id="@+id/layoutSummaryHeader"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingLeft="12dp"
+        android:paddingRight="12dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="6dp">
+
+        <!-- Ряд 1: Дневник и Д/З -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btnBigSchedule"
+                android:layout_width="0dp"
+                android:layout_height="62dp"
+                android:layout_weight="1"
+                android:text="📅 Дневник\nРасписание уроков"
+                android:textAllCaps="false"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btnBigActual"
+                android:layout_width="0dp"
+                android:layout_height="62dp"
+                android:layout_weight="1"
+                android:layout_marginLeft="8dp"
+                android:text="📚 Д/З\nЗадания и файлы"
+                android:textAllCaps="false"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- Ряд 2: Все оценки и Настройки -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btnBigMarks"
+                android:layout_width="0dp"
+                android:layout_height="62dp"
+                android:layout_weight="1"
+                android:text="📊 Все оценки\nТабель успеваемости"
+                android:textAllCaps="false"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btnBigSettings"
+                android:layout_width="0dp"
+                android:layout_height="62dp"
+                android:layout_weight="1"
+                android:layout_marginLeft="8dp"
+                android:text="⚙️ Настройки\nПрофиль и тема"
+                android:textAllCaps="false"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvSummarySubtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:layout_marginBottom="4dp"
+            android:text="ПОСЛЕДНИЕ ОЦЕНКИ (ЗА 2 НЕДЕЛИ):"
+            android:textColor="#5E35B1"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- Панель вкладок: 🏠 Сводка | Дневник | Д/З | Оценки -->
+    <LinearLayout
+        android:id="@+id/tabsContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#FFFFFF"
+        android:orientation="horizontal"
+        android:paddingLeft="8dp"
+        android:paddingRight="8dp"
+        android:paddingBottom="10dp"
+        android:visibility="gone">
+
+        <Button
+            android:id="@+id/btnTabSummary"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:padding="2dp"
+            android:text="🏠 Сводка"
+            android:textAllCaps="false"
+            android:textSize="11sp" />
+
+        <Button
+            android:id="@+id/btnTabSchedule"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:layout_marginLeft="5dp"
+            android:padding="2dp"
+            android:text="Дневник"
+            android:textAllCaps="false"
+            android:textSize="11sp" />
+
+        <Button
+            android:id="@+id/btnTabHw"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:layout_marginLeft="5dp"
+            android:padding="2dp"
+            android:text="Д/З"
+            android:textAllCaps="false"
+            android:textSize="11sp" />
+
+        <Button
+            android:id="@+id/btnTabMarks"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:layout_marginLeft="5dp"
+            android:padding="2dp"
+            android:text="Оценки"
+            android:textAllCaps="false"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <!-- Под-вкладки внутри Д/З: [ Актуальное ] | [ На завтра ] -->
+    <LinearLayout
+        android:id="@+id/layoutHwSubTabs"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingLeft="12dp"
+        android:paddingRight="12dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="8dp"
+        android:visibility="gone">
+
+        <Button
+            android:id="@+id/btnSubActual"
+            android:layout_width="0dp"
+            android:layout_height="34dp"
+            android:layout_weight="1"
+            android:text="⚡ Актуальное"
+            android:textAllCaps="false"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnSubTomorrow"
+            android:layout_width="0dp"
+            android:layout_height="34dp"
+            android:layout_weight="1"
+            android:layout_marginLeft="8dp"
+            android:text="🎯 На завтра"
+            android:textAllCaps="false"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- Панель переключения дней (только для вкладки Дневник) -->
+    <LinearLayout
+        android:id="@+id/layoutDayNav"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="8dp"
+        android:visibility="gone">
+
+        <Button
+            android:id="@+id/btnPrevDay"
+            android:layout_width="44dp"
+            android:layout_height="38dp"
+            android:text="‹"
+            android:textSize="18sp" />
+
+        <TextView
+            android:id="@+id/tvSelectedDate"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:textColor="#212121"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:text="Сегодня" />
+
+        <Button
+            android:id="@+id/btnNextDay"
+            android:layout_width="44dp"
+            android:layout_height="38dp"
+            android:text="›"
+            android:textSize="18sp" />
+    </LinearLayout>
+
+    <!-- Основной контейнер контента -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <!-- Список элементов -->
+        <ListView
+            android:id="@+id/lvLessons"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:divider="@null"
+            android:dividerHeight="0dp"
+            android:clipToPadding="false"
+            android:paddingBottom="16dp" />
+
+        <!-- Экран Настроек -->
+        <ScrollView
+            android:id="@+id/layoutSettings"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="14dp">
+
+                <LinearLayout
+                    android:id="@+id/cardProfile"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:id="@+id/tvSettingsTitleProfile"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="ПРОФИЛЬ УЧЕНИКА"
+                        android:textColor="#5E35B1"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvSettingsFio"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="ФИО: Загрузка..."
+                        android:textColor="#212121"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvSettingsSchool"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="Школа: Не указана"
+                        android:textColor="#616161"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:id="@+id/tvSettingsEduId"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="ID обучения: 504817"
+                        android:textColor="#757575"
+                        android:textSize="13sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/cardAppearance"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:id="@+id/tvSettingsTitleTheme"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="ОФОРМЛЕНИЕ"
+                        android:textColor="#5E35B1"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvSettingsThemeDesc"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="Приятная тёмная тема снижает нагрузку на глаза в вечернее время."
+                        android:textColor="#757575"
+                        android:textSize="13sp" />
+
+                    <Button
+                        android:id="@+id/btnToggleTheme"
+                        android:layout_width="match_parent"
+                        android:layout_height="44dp"
+                        android:layout_marginTop="12dp"
+                        android:text="🌙 Включить тёмную тему"
+                        android:textAllCaps="false"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/btnLogout"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:layout_marginTop="18dp"
+                    android:text="Выйти из аккаунта Госуслуг"
+                    android:textAllCaps="false"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+            </LinearLayout>
+        </ScrollView>
+
+        <ProgressBar
+            android:id="@+id/progressBar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/tvEmptyState"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:text="Нет данных"
+            android:textColor="#9E9E9E"
+            android:textSize="15sp"
+            android:visibility="gone" />
+    </FrameLayout>
+</LinearLayout>

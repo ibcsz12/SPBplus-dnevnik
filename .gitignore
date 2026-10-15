@@ -1,0 +1,35 @@
+# Build directories and artifacts
+build/
+bin/
+gen/
+obj/
+out/
+*.apk
+*.aab
+*.dex
+*.flat
+*.class
+
+# Keystores & keys (protect your keys from leaking on GitHub)
+*.keystore
+*.jks
+dnevnik-debug.keystore
+
+# Temporary archives
+*.zip
+*.tar.gz
+*.7z
+
+# OS / Editor temporary files
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and local profiles
+*.log
+clicks_log.json
+registered_users.json
+dnevnik_profile/
