@@ -45,6 +45,7 @@ The official web portal and legacy mobile apps are notoriously bloated, slow, an
 | **🏠 Summary (Сводка)** | The primary dashboard. Displays your newest grades received over the past 2 weeks in descending chronological order, plus quick-access action tiles. |
 | **📅 Schedule (Дневник)** | Full daily timetable, conducted lessons, marks earned during the class, and homework tasks with attachments. |
 | **📚 Actual HW (Актуальное)** | Groups the latest active homework assignments by subject, calculated over an adaptive $-7$ to $+14$ day range. |
+| **📚 tomorow HW (На завтра)** | Groups the homework assigned for tomorrow |
 | **📊 Grades (Все оценки)** | Complete academic breakdown by subject with weighted average GPA and historical mark details. |
 | **⚙️ Profile & Settings** | Shows real student name (`child_fio`), school number (`institution_name`), and instant toggle for the custom Dark Theme. |
 
