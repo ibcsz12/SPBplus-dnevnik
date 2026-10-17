@@ -8,7 +8,7 @@
 [![Telegram](https://img.shields.io/badge/Telegram-@nixwaretop-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/nixwaretop)
 [![Platform](https://img.shields.io/badge/Platform-Android_7.0+-3DDC84?style=for-the-badge&logo=android&logoColor=white)](#)
 [![Build](https://img.shields.io/badge/Build-Zero--Gradle_%7C_aapt2-FF6F00?style=for-the-badge)](#)
-[![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](#)
+[![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](https://github.com/ibcsz12/SPBplus-dnevnik?tab=MIT-1-ov-file)
 
 <br/>
 
