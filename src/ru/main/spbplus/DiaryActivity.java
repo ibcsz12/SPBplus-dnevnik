@@ -431,7 +431,6 @@ public class DiaryActivity extends Activity {
         }
     }
 
-    // Чистый переход на окно логина без наслоения экранов
     private void redirectToLogin() {
         prefs.edit().remove("token").apply();
         Intent intent = new Intent(this, LoginActivity.class);
@@ -570,47 +569,143 @@ public class DiaryActivity extends Activity {
         }).start();
     }
 
+    // ЕДИНЫЙ АЛГОРИТМ ПОСТРОЕНИЯ ПОЛНОГО РАСПИСАНИЯ ДНЯ (с восстановлением из D-7)
+    private List<JSONObject> getFullDayLessons(Calendar targetDay) throws Exception {
+        String dateStr = apiDateFormat.format(targetDay.getTime());
+        String from = dateStr + " 00:00:00";
+        String to = dateStr + " 23:59:59";
+
+        Calendar prevCal = (Calendar) targetDay.clone();
+        prevCal.add(Calendar.DAY_OF_YEAR, -7);
+        String prevDateStr = apiDateFormat.format(prevCal.getTime());
+        String prevFrom = prevDateStr + " 00:00:00";
+        String prevTo = prevDateStr + " 23:59:59";
+
+        // 1. Расписание и уроки на день
+        JSONArray schedItems = null;
+        try {
+            schedItems = api.schedule(educationIds, from, to).optJSONArray("items");
+        } catch (Exception ignored) {}
+
+        JSONArray lessonItems = null;
+        try {
+            lessonItems = api.homework(educationIds, from, to).optJSONArray("items");
+        } catch (Exception ignored) {}
+
+        // 2. Расписание и уроки на прошлую неделю (D - 7)
+        JSONArray prevSchedItems = null;
+        try {
+            prevSchedItems = api.schedule(educationIds, prevFrom, prevTo).optJSONArray("items");
+        } catch (Exception ignored) {}
+
+        JSONArray prevLessonItems = null;
+        try {
+            prevLessonItems = api.homework(educationIds, prevFrom, prevTo).optJSONArray("items");
+        } catch (Exception ignored) {}
+
+        // Индексация проведенных уроков
+        Map<String, JSONObject> conductedMap = new LinkedHashMap<>();
+        if (lessonItems != null) {
+            for (int i = 0; i < lessonItems.length(); i++) {
+                JSONObject obj = lessonItems.getJSONObject(i);
+                String num = String.valueOf(obj.optInt("number", i + 1));
+                String subj = cleanStr(obj, "subject_name");
+                if (subj.isEmpty()) subj = "Урок";
+                conductedMap.put(num + "_" + subj, obj);
+            }
+        }
+
+        // Объединение сетки расписания и проведенных уроков
+        Map<String, JSONObject> currentMerged = new LinkedHashMap<>();
+        if (schedItems != null) {
+            for (int i = 0; i < schedItems.length(); i++) {
+                JSONObject sObj = schedItems.getJSONObject(i);
+                String num = String.valueOf(sObj.optInt("number", i + 1));
+                String subj = cleanStr(sObj, "subject_name");
+                if (subj.isEmpty()) subj = "Урок";
+                String key = num + "_" + subj;
+
+                if (conductedMap.containsKey(key)) {
+                    currentMerged.put(key, conductedMap.get(key));
+                    conductedMap.remove(key);
+                } else {
+                    currentMerged.put(key, sObj);
+                }
+            }
+        }
+        currentMerged.putAll(conductedMap);
+
+        // Индексация эталона из прошлой недели
+        Map<Integer, JSONObject> referenceByNumber = new HashMap<>();
+        if (prevSchedItems != null) {
+            for (int i = 0; i < prevSchedItems.length(); i++) {
+                JSONObject obj = prevSchedItems.getJSONObject(i);
+                int num = obj.optInt("number", i + 1);
+                referenceByNumber.put(num, obj);
+            }
+        }
+        if (prevLessonItems != null) {
+            for (int i = 0; i < prevLessonItems.length(); i++) {
+                JSONObject obj = prevLessonItems.getJSONObject(i);
+                int num = obj.optInt("number", i + 1);
+                if (!referenceByNumber.containsKey(num)) {
+                    referenceByNumber.put(num, obj);
+                }
+            }
+        }
+
+        Map<Integer, JSONObject> currentByNumber = new HashMap<>();
+        int autoNum = 1;
+        for (JSONObject obj : currentMerged.values()) {
+            int num = obj.optInt("number", autoNum++);
+            currentByNumber.put(num, obj);
+        }
+
+        // Восстановление пропавших предметов из D - 7
+        for (Map.Entry<Integer, JSONObject> entry : referenceByNumber.entrySet()) {
+            int num = entry.getKey();
+            if (!currentByNumber.containsKey(num)) {
+                JSONObject refObj = entry.getValue();
+                JSONObject restored = new JSONObject();
+                restored.put("number", num);
+                restored.put("subject_name", cleanStr(refObj, "subject_name"));
+                restored.put("time_from", cleanStr(refObj, "time_from"));
+                restored.put("time_to", cleanStr(refObj, "time_to"));
+                restored.put("datetime_from", cleanStr(refObj, "datetime_from"));
+                restored.put("datetime_to", cleanStr(refObj, "datetime_to"));
+                restored.put("room_name", cleanStr(refObj, "room_name"));
+                restored.put("tasks", new JSONArray());
+                currentByNumber.put(num, restored);
+            }
+        }
+
+        List<JSONObject> result = new ArrayList<>(currentByNumber.values());
+        Collections.sort(result, new Comparator<JSONObject>() {
+            @Override
+            public int compare(JSONObject a, JSONObject b) {
+                return Integer.compare(a.optInt("number", 1), b.optInt("number", 1));
+            }
+        });
+        return result;
+    }
+
     // ВКЛАДКА 1: Дневник
     private void loadScheduleDay() {
         String dateTitle = displayDateFormat.format(currentDay.getTime());
         tvSelectedDate.setText(dateTitle.substring(0, 1).toUpperCase() + dateTitle.substring(1));
 
         String dateStr = apiDateFormat.format(currentDay.getTime());
-        String from = dateStr + " 00:00:00";
-        String to = dateStr + " 23:59:59";
         String eduId = educationIds.isEmpty() ? "504817" : educationIds.get(0);
-
-        Calendar prevCal = (Calendar) currentDay.clone();
-        prevCal.add(Calendar.DAY_OF_YEAR, -7);
-        String prevDateStr = apiDateFormat.format(prevCal.getTime());
-        String prevFrom = prevDateStr + " 00:00:00";
-        String prevTo = prevDateStr + " 23:59:59";
 
         setLoading(true);
 
         new Thread(() -> {
             List<Lesson> resultLessons = new ArrayList<>();
             try {
-                JSONArray schedItems = null;
-                try {
-                    schedItems = api.schedule(educationIds, from, to).optJSONArray("items");
-                } catch (Exception ignored) {}
+                // Получаем полный список уроков через единый алгоритм с восстановлением
+                List<JSONObject> fullLessons = getFullDayLessons(currentDay);
 
-                JSONArray lessonItems = null;
-                try {
-                    lessonItems = api.homework(educationIds, from, to).optJSONArray("items");
-                } catch (Exception ignored) {}
-
-                JSONArray prevSchedItems = null;
-                try {
-                    prevSchedItems = api.schedule(educationIds, prevFrom, prevTo).optJSONArray("items");
-                } catch (Exception ignored) {}
-
-                JSONArray prevLessonItems = null;
-                try {
-                    prevLessonItems = api.homework(educationIds, prevFrom, prevTo).optJSONArray("items");
-                } catch (Exception ignored) {}
-
+                // Оценки и посещаемость за день
                 Map<String, List<JSONObject>> realMarksBySubject = new HashMap<>();
                 Map<String, List<JSONObject>> attendanceBySubject = new HashMap<>();
 
@@ -636,79 +731,7 @@ public class DiaryActivity extends Activity {
                     }
                 } catch (Exception ignored) {}
 
-                Map<String, JSONObject> conductedMap = new LinkedHashMap<>();
-                if (lessonItems != null) {
-                    for (int i = 0; i < lessonItems.length(); i++) {
-                        JSONObject obj = lessonItems.getJSONObject(i);
-                        String num = String.valueOf(obj.optInt("number", i + 1));
-                        String subj = cleanStr(obj, "subject_name");
-                        if (subj.isEmpty()) subj = "Урок";
-                        conductedMap.put(num + "_" + subj, obj);
-                    }
-                }
-
-                Map<String, JSONObject> currentMerged = new LinkedHashMap<>();
-                if (schedItems != null) {
-                    for (int i = 0; i < schedItems.length(); i++) {
-                        JSONObject sObj = schedItems.getJSONObject(i);
-                        String num = String.valueOf(sObj.optInt("number", i + 1));
-                        String subj = cleanStr(sObj, "subject_name");
-                        if (subj.isEmpty()) subj = "Урок";
-                        String key = num + "_" + subj;
-
-                        if (conductedMap.containsKey(key)) {
-                            currentMerged.put(key, conductedMap.get(key));
-                            conductedMap.remove(key);
-                        } else {
-                            currentMerged.put(key, sObj);
-                        }
-                    }
-                }
-                currentMerged.putAll(conductedMap);
-
-                Map<Integer, JSONObject> referenceByNumber = new HashMap<>();
-                if (prevSchedItems != null) {
-                    for (int i = 0; i < prevSchedItems.length(); i++) {
-                        JSONObject obj = prevSchedItems.getJSONObject(i);
-                        int num = obj.optInt("number", i + 1);
-                        referenceByNumber.put(num, obj);
-                    }
-                }
-                if (prevLessonItems != null) {
-                    for (int i = 0; i < prevLessonItems.length(); i++) {
-                        JSONObject obj = prevLessonItems.getJSONObject(i);
-                        int num = obj.optInt("number", i + 1);
-                        if (!referenceByNumber.containsKey(num)) {
-                            referenceByNumber.put(num, obj);
-                        }
-                    }
-                }
-
-                Map<Integer, JSONObject> currentByNumber = new HashMap<>();
-                int autoNum = 1;
-                for (JSONObject obj : currentMerged.values()) {
-                    int num = obj.optInt("number", autoNum++);
-                    currentByNumber.put(num, obj);
-                }
-
-                for (Map.Entry<Integer, JSONObject> entry : referenceByNumber.entrySet()) {
-                    int num = entry.getKey();
-                    if (!currentByNumber.containsKey(num)) {
-                        JSONObject refObj = entry.getValue();
-                        JSONObject restored = new JSONObject();
-                        restored.put("number", num);
-                        restored.put("subject_name", cleanStr(refObj, "subject_name"));
-                        restored.put("time_from", cleanStr(refObj, "time_from"));
-                        restored.put("time_to", cleanStr(refObj, "time_to"));
-                        restored.put("datetime_from", cleanStr(refObj, "datetime_from"));
-                        restored.put("datetime_to", cleanStr(refObj, "datetime_to"));
-                        restored.put("room_name", cleanStr(refObj, "room_name"));
-                        restored.put("tasks", new JSONArray());
-                        currentByNumber.put(num, restored);
-                    }
-                }
-
-                for (JSONObject obj : currentByNumber.values()) {
+                for (JSONObject obj : fullLessons) {
                     if (currentTab != TAB_SCHEDULE) return;
 
                     String num = String.valueOf(obj.optInt("number", 1));
@@ -774,17 +797,6 @@ public class DiaryActivity extends Activity {
 
                     resultLessons.add(new Lesson(num, subject, time, room, combinedBody.toString(), gradeBadge.toString(), boxTitle));
                 }
-
-                Collections.sort(resultLessons, new Comparator<Lesson>() {
-                    @Override
-                    public int compare(Lesson a, Lesson b) {
-                        try {
-                            return Integer.compare(Integer.parseInt(a.number), Integer.parseInt(b.number));
-                        } catch (Exception e) {
-                            return a.number.compareTo(b.number);
-                        }
-                    }
-                });
 
                 runOnUiThread(() -> {
                     if (currentTab != TAB_SCHEDULE) return;
@@ -880,7 +892,7 @@ public class DiaryActivity extends Activity {
         }).start();
     }
 
-    // ВКЛАДКА 2Б: Д/З -> На завтра
+    // ВКЛАДКА 2Б: Д/З -> На завтра (ТЕПЕРЬ БЕРЁТ ТОЧНЫЙ СПИСОК ПРЕДМЕТОВ ИЗ РАСПИСАНИЯ ДНЕВНИКА)
     private void loadTomorrowHomework() {
         Calendar calTom = Calendar.getInstance();
         int dayOfWeek = calTom.get(Calendar.DAY_OF_WEEK);
@@ -896,7 +908,6 @@ public class DiaryActivity extends Activity {
         }
 
         String tomDateStr = apiDateFormat.format(calTom.getTime());
-        String tomFrom = tomDateStr + " 00:00:00";
         String tomTo = tomDateStr + " 23:59:59";
         String tomDisplay = displayDateFormat.format(calTom.getTime());
 
@@ -909,11 +920,10 @@ public class DiaryActivity extends Activity {
         new Thread(() -> {
             List<Lesson> tomorrowList = new ArrayList<>();
             try {
-                JSONArray tomSchedItems = null;
-                try {
-                    tomSchedItems = api.schedule(educationIds, tomFrom, tomTo).optJSONArray("items");
-                } catch (Exception ignored) {}
+                // 1. Получаем ПОЛНОЕ, ПРАВИЛЬНОЕ расписание завтрашнего дня точно так же, как во вкладке «Дневник»!
+                List<JSONObject> tomFullLessons = getFullDayLessons(calTom);
 
+                // 2. Получаем все последние задания
                 JSONObject hwResp = api.homework(educationIds, hwFrom, tomTo);
                 JSONArray hwItems = hwResp.optJSONArray("items");
 
@@ -940,47 +950,36 @@ public class DiaryActivity extends Activity {
                     }
                 }
 
-                if (tomSchedItems != null) {
-                    for (int i = 0; i < tomSchedItems.length(); i++) {
-                        JSONObject sObj = tomSchedItems.getJSONObject(i);
-                        String subject = cleanStr(sObj, "subject_name");
-                        if (subject.isEmpty()) continue;
+                // 3. Проходим по каждому уроку из реального расписания и привязываем ДЗ
+                for (JSONObject sObj : tomFullLessons) {
+                    String subject = cleanStr(sObj, "subject_name");
+                    if (subject.isEmpty()) continue;
 
-                        if (latestHwBySubject.containsKey(subject)) {
-                            JSONObject hwLesson = latestHwBySubject.get(subject);
-                            String num = String.valueOf(sObj.optInt("number", i + 1));
-                            String time = extractTimeRange(sObj);
-                            String room = cleanStr(sObj, "room_name");
+                    // Ищем домашнее задание по точному или нестрогому совпадению названия
+                    JSONObject hwLesson = findHomeworkForSubject(latestHwBySubject, subject);
 
-                            String hwHtml = formatTasksHtml(hwLesson.optJSONArray("tasks"));
+                    if (hwLesson != null) {
+                        String num = String.valueOf(sObj.optInt("number", 1));
+                        String time = extractTimeRange(sObj);
+                        String room = cleanStr(sObj, "room_name");
 
-                            String boxTitle = (dayOfWeek == Calendar.FRIDAY || dayOfWeek == Calendar.SATURDAY || dayOfWeek == Calendar.SUNDAY)
-                                    ? "Д/З НА ПОНЕДЕЛЬНИК:"
-                                    : "Д/З НА ЗАВТРА:";
+                        String hwHtml = formatTasksHtml(hwLesson.optJSONArray("tasks"));
 
-                            tomorrowList.add(new Lesson(
-                                    num,
-                                    subject,
-                                    time.isEmpty() ? "Урок" : time,
-                                    room,
-                                    hwHtml,
-                                    "",
-                                    boxTitle
-                            ));
-                        }
+                        String boxTitle = (dayOfWeek == Calendar.FRIDAY || dayOfWeek == Calendar.SATURDAY || dayOfWeek == Calendar.SUNDAY)
+                                ? "Д/З НА ПОНЕДЕЛЬНИК:"
+                                : "Д/З НА ЗАВТРА:";
+
+                        tomorrowList.add(new Lesson(
+                                num,
+                                subject,
+                                time.isEmpty() ? "Урок" : time,
+                                room,
+                                hwHtml,
+                                "",
+                                boxTitle
+                        ));
                     }
                 }
-
-                Collections.sort(tomorrowList, new Comparator<Lesson>() {
-                    @Override
-                    public int compare(Lesson a, Lesson b) {
-                        try {
-                            return Integer.compare(Integer.parseInt(a.number), Integer.parseInt(b.number));
-                        } catch (Exception e) {
-                            return a.number.compareTo(b.number);
-                        }
-                    }
-                });
 
                 runOnUiThread(() -> {
                     if (currentTab != TAB_HW || currentHwSub != HW_SUB_TOMORROW) return;
@@ -994,6 +993,24 @@ public class DiaryActivity extends Activity {
                 handleError(e);
             }
         }).start();
+    }
+
+    // Умный поиск ДЗ для предмета (с учётом вариаций названий)
+    private JSONObject findHomeworkForSubject(Map<String, JSONObject> latestHw, String subject) {
+        if (latestHw.containsKey(subject)) {
+            return latestHw.get(subject);
+        }
+        String sNorm = subject.toLowerCase(Locale.ROOT).trim();
+        for (Map.Entry<String, JSONObject> entry : latestHw.entrySet()) {
+            String kNorm = entry.getKey().toLowerCase(Locale.ROOT).trim();
+            if (kNorm.equals(sNorm)) {
+                return entry.getValue();
+            }
+            if (kNorm.contains(sNorm) || sNorm.contains(kNorm)) {
+                return entry.getValue();
+            }
+        }
+        return null;
     }
 
     // ВКЛАДКА 3: Оценки
@@ -1223,12 +1240,10 @@ public class DiaryActivity extends Activity {
         return sb.toString();
     }
 
-    // Обработка 401 с защитой от пинг-понга
     private void handleError(Exception e) {
         runOnUiThread(() -> {
             setLoading(false);
             if (e.getMessage() != null && e.getMessage().contains("401")) {
-                // АНТИ-ПЕТЛЯ: если токен получен меньше 15 секунд назад, НЕ прыгаем на логин
                 long tokenTime = prefs.getLong("token_time", 0);
                 if (System.currentTimeMillis() - tokenTime < 15000) {
                     Toast.makeText(this, "Сервер обновляет данные. Нажмите '↻'", Toast.LENGTH_SHORT).show();
