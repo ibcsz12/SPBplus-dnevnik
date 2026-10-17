@@ -2,29 +2,18 @@ package ru.main.spbplus;
 
 import ru.main.spbplus.R;
 
-import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
-import android.net.Uri;
-import android.net.http.SslError;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
-import android.util.Log;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
-import android.webkit.SslErrorHandler;
-import android.webkit.WebResourceRequest;
-import android.webkit.WebSettings;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.ListView;
 import android.widget.ProgressBar;
@@ -48,8 +37,6 @@ import java.util.Locale;
 import java.util.Map;
 
 public class DiaryActivity extends Activity {
-    private static final String TAG = "DiaryActivity";
-
     private static final int TAB_SUMMARY = 0;
     private static final int TAB_SCHEDULE = 1;
     private static final int TAB_HW = 2;
@@ -68,11 +55,6 @@ public class DiaryActivity extends Activity {
     private int previousTab = TAB_SUMMARY;
     private int currentHwSub = HW_SUB_ACTUAL;
     private boolean darkMode = false;
-
-    private WebView silentWeb;
-    private boolean isSilentRefreshing = false;
-    private Runnable pendingRetryAction = null;
-    private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     private View rootLayout, headerLayout, tabsContainer, layoutDayNav, layoutSummaryHeader, layoutHwSubTabs;
     private View cardProfile, cardAppearance;
@@ -107,6 +89,8 @@ public class DiaryActivity extends Activity {
         }
 
         api = new Api(token);
+
+        CookieManager.getInstance().flush();
 
         rootLayout = findViewById(R.id.rootLayout);
         headerLayout = findViewById(R.id.headerLayout);
@@ -210,7 +194,6 @@ public class DiaryActivity extends Activity {
             applyTheme();
         });
 
-        setupSilentAuthWebview();
         applyTheme();
         initProfileAndLoad();
     }
@@ -264,7 +247,6 @@ public class DiaryActivity extends Activity {
             btnToggleTheme.setText("🌙 Включить тёмную тему");
         }
 
-        // Окрашивание системной полоски (Status Bar) в цвет шапки
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             Window window = getWindow();
             window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
@@ -283,7 +265,6 @@ public class DiaryActivity extends Activity {
         styleCard(cardProfile, d);
         styleCard(cardAppearance, d);
 
-        // Стилизуем кнопки шапки без внутренних отступов (устраняет баг с двумя точками)
         styleSecondaryButton(btnRefresh, d);
         styleSecondaryButton(btnHeaderSettings, d);
         styleSecondaryButton(btnPrevDay, d);
@@ -450,126 +431,12 @@ public class DiaryActivity extends Activity {
         }
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
-    private void setupSilentAuthWebview() {
-        silentWeb = new WebView(this);
-        WebSettings ws = silentWeb.getSettings();
-        ws.setJavaScriptEnabled(true);
-        ws.setDomStorageEnabled(true);
-        ws.setDatabaseEnabled(true);
-        ws.setCacheMode(WebSettings.LOAD_DEFAULT);
-
-        String ua = ws.getUserAgentString().replace("; wv", "");
-        ws.setUserAgentString(ua);
-
-        CookieManager cm = CookieManager.getInstance();
-        cm.setAcceptCookie(true);
-        cm.setAcceptThirdPartyCookies(silentWeb, true);
-
-        silentWeb.setWebViewClient(new WebViewClient() {
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                checkSilentToken(request.getUrl().toString());
-                return false;
-            }
-
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                checkSilentToken(url);
-                return false;
-            }
-
-            @Override
-            public void onPageStarted(WebView view, String url, Bitmap favicon) {
-                super.onPageStarted(view, url, favicon);
-                checkSilentToken(url);
-            }
-
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
-                checkSilentToken(url);
-            }
-
-            @SuppressLint("WebViewClientOnReceivedSslError")
-            @Override
-            public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
-                handler.proceed();
-            }
-
-            private void checkSilentToken(String url) {
-                if (url == null || !isSilentRefreshing) return;
-                try {
-                    Uri uri = Uri.parse(url);
-                    String jwt = uri.getQueryParameter("x-access-token");
-                    if (jwt != null && jwt.startsWith("eyJ")) {
-                        onSilentTokenReceived(jwt);
-                        return;
-                    }
-                    String t = uri.getQueryParameter("token");
-                    if (t != null && t.startsWith("eyJ")) {
-                        onSilentTokenReceived(t);
-                    }
-                } catch (Exception ignored) {}
-            }
-        });
-    }
-
-    private void triggerSilentRefresh(Runnable onDoneAction) {
-        if (isSilentRefreshing) return;
-        isSilentRefreshing = true;
-        pendingRetryAction = onDoneAction;
-
-        setLoading(true);
-        Log.d(TAG, "Тихое автообновление токена...");
-
-        mainHandler.postDelayed(() -> {
-            if (isSilentRefreshing) {
-                isSilentRefreshing = false;
-                setLoading(false);
-                Toast.makeText(DiaryActivity.this, "Сессия истекла. Войдите заново.", Toast.LENGTH_SHORT).show();
-                redirectToLogin();
-            }
-        }, 10000);
-
-        new Thread(() -> {
-            try {
-                String url = api.getEsiaLoginUrl();
-                runOnUiThread(() -> silentWeb.loadUrl(url));
-            } catch (Exception e) {
-                runOnUiThread(() -> {
-                    isSilentRefreshing = false;
-                    setLoading(false);
-                    Toast.makeText(DiaryActivity.this, "Ошибка сети: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                });
-            }
-        }).start();
-    }
-
-    private void onSilentTokenReceived(String newJwt) {
-        runOnUiThread(() -> {
-            if (!isSilentRefreshing) return;
-            isSilentRefreshing = false;
-            Log.d(TAG, "Токен успешно обновлён в фоне!");
-
-            prefs.edit().putString("token", newJwt).apply();
-            api.setToken(newJwt);
-
-            if (pendingRetryAction != null) {
-                Runnable action = pendingRetryAction;
-                pendingRetryAction = null;
-                action.run();
-            } else {
-                reloadCurrentTab();
-            }
-        });
-    }
-
+    // Чистый переход на окно логина без наслоения экранов
     private void redirectToLogin() {
         prefs.edit().remove("token").apply();
         Intent intent = new Intent(this, LoginActivity.class);
         intent.putExtra("force_relogin", true);
-        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         startActivity(intent);
         finish();
     }
@@ -606,7 +473,7 @@ public class DiaryActivity extends Activity {
                     switchTab(TAB_SUMMARY);
                 });
             } catch (Exception e) {
-                handleError(e, this::initProfileAndLoad);
+                handleError(e);
             }
         }).start();
     }
@@ -698,7 +565,7 @@ public class DiaryActivity extends Activity {
                 });
 
             } catch (Exception e) {
-                handleError(e, this::loadSummary);
+                handleError(e);
             }
         }).start();
     }
@@ -928,7 +795,7 @@ public class DiaryActivity extends Activity {
                 });
 
             } catch (Exception e) {
-                handleError(e, this::loadScheduleDay);
+                handleError(e);
             }
         }).start();
     }
@@ -1008,19 +875,16 @@ public class DiaryActivity extends Activity {
                 });
 
             } catch (Exception e) {
-                handleError(e, this::loadActualHomework);
+                handleError(e);
             }
         }).start();
     }
 
-    // ВКЛАДКА 2Б: Д/З -> На завтра (если пятница/суббота/вскр — переключает на понедельник)
+    // ВКЛАДКА 2Б: Д/З -> На завтра
     private void loadTomorrowHomework() {
         Calendar calTom = Calendar.getInstance();
         int dayOfWeek = calTom.get(Calendar.DAY_OF_WEEK);
 
-        // Если сегодня пятница -> понедельник (+3 дня)
-        // Если суббота -> понедельник (+2 дня)
-        // Если воскресенье -> понедельник (+1 день)
         if (dayOfWeek == Calendar.FRIDAY) {
             calTom.add(Calendar.DAY_OF_YEAR, 3);
         } else if (dayOfWeek == Calendar.SATURDAY) {
@@ -1036,7 +900,6 @@ public class DiaryActivity extends Activity {
         String tomTo = tomDateStr + " 23:59:59";
         String tomDisplay = displayDateFormat.format(calTom.getTime());
 
-        // Запас для поиска актуального ДЗ
         Calendar calHwFrom = Calendar.getInstance();
         calHwFrom.add(Calendar.DAY_OF_YEAR, -14);
         String hwFrom = apiDateFormat.format(calHwFrom.getTime()) + " 00:00:00";
@@ -1046,13 +909,11 @@ public class DiaryActivity extends Activity {
         new Thread(() -> {
             List<Lesson> tomorrowList = new ArrayList<>();
             try {
-                // 1. Получаем расписание целевого дня (завтра или понедельник)
                 JSONArray tomSchedItems = null;
                 try {
                     tomSchedItems = api.schedule(educationIds, tomFrom, tomTo).optJSONArray("items");
                 } catch (Exception ignored) {}
 
-                // 2. Получаем все последние задания
                 JSONObject hwResp = api.homework(educationIds, hwFrom, tomTo);
                 JSONArray hwItems = hwResp.optJSONArray("items");
 
@@ -1079,7 +940,6 @@ public class DiaryActivity extends Activity {
                     }
                 }
 
-                // 3. Отбираем только предметы, которые есть в расписании целевого дня и у которых задано ДЗ
                 if (tomSchedItems != null) {
                     for (int i = 0; i < tomSchedItems.length(); i++) {
                         JSONObject sObj = tomSchedItems.getJSONObject(i);
@@ -1131,7 +991,7 @@ public class DiaryActivity extends Activity {
                 });
 
             } catch (Exception e) {
-                handleError(e, this::loadTomorrowHomework);
+                handleError(e);
             }
         }).start();
     }
@@ -1231,7 +1091,7 @@ public class DiaryActivity extends Activity {
                 });
 
             } catch (Exception e) {
-                handleError(e, this::loadAllMarks);
+                handleError(e);
             }
         }).start();
     }
@@ -1363,13 +1223,20 @@ public class DiaryActivity extends Activity {
         return sb.toString();
     }
 
-    private void handleError(Exception e, Runnable retryAction) {
+    // Обработка 401 с защитой от пинг-понга
+    private void handleError(Exception e) {
         runOnUiThread(() -> {
+            setLoading(false);
             if (e.getMessage() != null && e.getMessage().contains("401")) {
-                triggerSilentRefresh(retryAction);
+                // АНТИ-ПЕТЛЯ: если токен получен меньше 15 секунд назад, НЕ прыгаем на логин
+                long tokenTime = prefs.getLong("token_time", 0);
+                if (System.currentTimeMillis() - tokenTime < 15000) {
+                    Toast.makeText(this, "Сервер обновляет данные. Нажмите '↻'", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                redirectToLogin();
                 return;
             }
-            setLoading(false);
             Toast.makeText(this, "Ошибка: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         });
     }

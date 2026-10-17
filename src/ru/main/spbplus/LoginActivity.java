@@ -46,15 +46,13 @@ public class LoginActivity extends Activity {
 
         prefs = getSharedPreferences("dnevnik", MODE_PRIVATE);
 
-        // Проверяем: если открыто для повторного входа (токен протух), не авто-логинимся
         boolean forceRelogin = getIntent().getBooleanExtra("force_relogin", false);
         String savedToken = prefs.getString("token", null);
 
+        // Если токен есть в памяти и не запрошен принудительный вход — сразу в оболочку
         if (!forceRelogin && savedToken != null && savedToken.startsWith("eyJ")) {
             openDiary();
             return;
-        } else {
-            prefs.edit().remove("token").apply();
         }
 
         FrameLayout root = new FrameLayout(this);
@@ -107,7 +105,6 @@ public class LoginActivity extends Activity {
         web.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onProgressChanged(WebView view, int newProgress) {
-                // Прячем спиннер, как только пошёл ответ
                 if (newProgress > 15) {
                     progressBar.setVisibility(View.GONE);
                     tvStatus.setVisibility(View.GONE);
@@ -118,12 +115,21 @@ public class LoginActivity extends Activity {
         web.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                return handleNavigation(view, request.getUrl().toString());
+                String url = request.getUrl().toString();
+                if (checkTokenAndOpen(url)) {
+                    view.stopLoading();
+                    return true;
+                }
+                return false;
             }
 
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                return handleNavigation(view, url);
+                if (checkTokenAndOpen(url)) {
+                    view.stopLoading();
+                    return true;
+                }
+                return false;
             }
 
             @Override
@@ -132,7 +138,10 @@ public class LoginActivity extends Activity {
                 Log.d(TAG, "Navigating: " + url);
                 progressBar.setVisibility(View.GONE);
                 tvStatus.setVisibility(View.GONE);
-                checkTokenInUrl(url);
+
+                if (checkTokenAndOpen(url)) {
+                    view.stopLoading();
+                }
             }
 
             @Override
@@ -142,16 +151,24 @@ public class LoginActivity extends Activity {
                 progressBar.setVisibility(View.GONE);
                 tvStatus.setVisibility(View.GONE);
 
+                CookieManager.getInstance().flush();
+
+                if (checkTokenAndOpen(url)) {
+                    return;
+                }
+
+                // Дополнительная проверка на случай если токен лег в куки
                 checkCookies();
 
+                // Проверка LocalStorage
                 if (url != null && url.contains("dnevnik2.petersburgedu.ru")) {
                     view.evaluateJavascript(
                         "(function() { return localStorage.getItem('token') || localStorage.getItem('jwt') || localStorage.getItem('X-JWT-Token'); })();",
                         val -> {
-                            if (val != null && !val.equals("null") && val.length() > 20) {
+                            if (val != null && !val.equals("null") && val.length() > 30) {
                                 String clean = val.replace("\"", "").trim();
                                 if (clean.startsWith("eyJ")) {
-                                    onTokenObtained(clean);
+                                    onTokenFound(clean);
                                 }
                             }
                         }
@@ -170,35 +187,44 @@ public class LoginActivity extends Activity {
                 super.onReceivedError(view, request, error);
                 Log.e(TAG, "WebView error: " + error);
             }
-
-            private boolean handleNavigation(WebView view, String url) {
-                if (url == null) return false;
-                checkTokenInUrl(url);
-                // ВАЖНО: возвращаем false, чтобы WebView НЕ блокировал запрос к dnevnik2.petersburgedu.ru/api/journal/esa/login
-                return false;
-            }
         });
 
         startLogin();
     }
 
-    private void checkTokenInUrl(String url) {
-        if (url == null || isFinished.get()) return;
+    // Мгновенный захват x-access-token из адреса редиректа
+    private boolean checkTokenAndOpen(String url) {
+        if (url == null || isFinished.get()) return false;
 
         try {
             Uri uri = Uri.parse(url);
-
             String jwt = uri.getQueryParameter("x-access-token");
             if (jwt != null && jwt.startsWith("eyJ")) {
-                onTokenObtained(jwt);
-                return;
+                onTokenFound(jwt);
+                return true;
             }
-
             String t = uri.getQueryParameter("token");
             if (t != null && t.startsWith("eyJ")) {
-                onTokenObtained(t);
+                onTokenFound(t);
+                return true;
             }
         } catch (Exception ignored) {}
+
+        // Резервный поиск по подстроке
+        if (url.contains("x-access-token=eyJ")) {
+            try {
+                int start = url.indexOf("x-access-token=") + "x-access-token=".length();
+                int end = url.indexOf("&", start);
+                String jwt = (end == -1) ? url.substring(start) : url.substring(start, end);
+                jwt = Uri.decode(jwt);
+                if (jwt.startsWith("eyJ")) {
+                    onTokenFound(jwt);
+                    return true;
+                }
+            } catch (Exception ignored) {}
+        }
+
+        return false;
     }
 
     private void checkCookies() {
@@ -211,7 +237,7 @@ public class LoginActivity extends Activity {
                     String name = pair[0].trim();
                     String val = pair[1].trim();
                     if ((name.equalsIgnoreCase("X-JWT-Token") || name.equalsIgnoreCase("token")) && val.startsWith("eyJ")) {
-                        onTokenObtained(val);
+                        onTokenFound(val);
                         return;
                     }
                 }
@@ -235,17 +261,22 @@ public class LoginActivity extends Activity {
                 Log.e(TAG, "Ошибка получения ссылки", e);
                 runOnUiThread(() -> {
                     progressBar.setVisibility(View.GONE);
-                    tvStatus.setText("Ошибка сети: проверьте подключение.\n" + e.getMessage());
+                    tvStatus.setText("Ошибка сети. Проверьте подключение.\n" + e.getMessage());
                     btnRetry.setVisibility(View.VISIBLE);
                 });
             }
         }).start();
     }
 
-    private void onTokenObtained(String token) {
+    private void onTokenFound(String token) {
         if (isFinished.compareAndSet(false, true)) {
-            Log.d(TAG, "БОЕВОЙ JWT ПОЛУЧЕН: " + token.substring(0, Math.min(20, token.length())) + "...");
-            prefs.edit().putString("token", token).apply();
+            Log.d(TAG, "✅ ТОКЕН ПЕРЕХВАЧЕН! ПЕРЕХОД В ОБОЛОЧКУ: " + token.substring(0, 20) + "...");
+            CookieManager.getInstance().flush();
+            prefs.edit()
+                 .putString("token", token)
+                 .putLong("token_time", System.currentTimeMillis())
+                 .apply();
+
             runOnUiThread(this::openDiary);
         }
     }
